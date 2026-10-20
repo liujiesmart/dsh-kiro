@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Kiro",
+    "description": "DeepSeek Harness 的 Kiro 模型提供方：支持 AWS Builder ID、IAM Identity Center、Google 与 GitHub 登录，自动刷新 token 与 profile ARN，实时发现可用模型，支持 Claude 与开源权重模型的流式输出、工具调用与推理档位控制。"
+  }
+}

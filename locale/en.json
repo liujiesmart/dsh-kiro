@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Kiro",
+    "description": "Kiro provider for DeepSeek Harness: AWS Builder ID, IAM Identity Center, Google and GitHub sign-in, automatic token and profile-ARN refresh, live model discovery, and Claude or open-weight streaming with tool calls and reasoning-effort controls."
+  }
+}
