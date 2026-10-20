@@ -241,6 +241,23 @@ export function kiroTokenTypeHeaders(token: KiroToken): Record<string, string> {
 const IMAGE_MAX_PIXELS = 8000 * 8000
 const IMAGE_MAX_BYTES = 3_750_000
 
+/**
+ * Project one normalized image onto the target Kiro's wire request uses.
+ *
+ * The harness asks the adapter for this same target through
+ * {@link KiroAdapter.imageRequestTarget}, so both answers must come from here:
+ * a target that differed from the one the request actually encodes would make
+ * the harness price and budget an image the adapter never sends.
+ * @param image - the durable normalized image reference.
+ * @returns the dimensions and byte target the request encoder receives.
+ */
+function kiroImageTarget(image: ImageAttachmentRef): ImageRequestTarget {
+  return {
+    ...requestImageDimensions(image.width, image.height, IMAGE_MAX_PIXELS),
+    maxBytes: IMAGE_MAX_BYTES,
+  }
+}
+
 /** Media types Kiro's `ImageFormat` enum accepts, mapped to its own spelling. */
 const IMAGE_FORMATS = new Map<ImageMediaType, WireImageBlock['format']>([
   ['image/png', 'png'],
@@ -293,11 +310,7 @@ async function prepareImages(
   for (const [id, ref] of refs) {
     // The store takes exact target dimensions; the pixel ceiling is projected
     // onto them here, as the bundled routes do.
-    const version = await store.readImageRequest(
-      ref,
-      { ...requestImageDimensions(ref.width, ref.height, IMAGE_MAX_PIXELS), maxBytes: IMAGE_MAX_BYTES },
-      signal,
-    )
+    const version = await store.readImageRequest(ref, kiroImageTarget(ref), signal)
     const format = IMAGE_FORMATS.get(version.mediaType)
     if (format === undefined) {
       throw new LlmError(
@@ -436,6 +449,26 @@ export class KiroAdapter extends LlmAdapter {
 
   override providerRetryPolicy(_provider: string): ResolvedRetryPolicy {
     return this.config.options().retryPolicy
+  }
+
+  /**
+   * Report the image target this route actually encodes.
+   *
+   * Kiro resizes and re-encodes every request image, so the answer is the
+   * Kiro projection rather than the normalized dimensions the harness
+   * stores. The request path projects the same target through the shared
+   * helper, so the two can never disagree.
+   * @param _provider - the registered provider route.
+   * @param _model - the exact model id.
+   * @param image - the normalized image whose projection is resolved.
+   * @returns the dimensions and byte target the request encoder receives.
+   */
+  override imageRequestTarget(
+    _provider: string,
+    _model: string,
+    image: ImageAttachmentRef,
+  ): ImageRequestTarget {
+    return kiroImageTarget(image)
   }
 
   override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {

@@ -170,6 +170,19 @@ export declare class KiroAdapter extends LlmAdapter {
     constructor(config: KiroAdapterOptions);
     providerInfo(provider: string): LlmProviderInfo;
     providerRetryPolicy(_provider: string): ResolvedRetryPolicy;
+    /**
+     * Report the image target this route actually encodes.
+     *
+     * Kiro resizes and re-encodes every request image, so the answer is the
+     * Kiro projection rather than the normalized dimensions the harness
+     * stores. The request path projects the same target through the shared
+     * helper, so the two can never disagree.
+     * @param _provider - the registered provider route.
+     * @param _model - the exact model id.
+     * @param image - the normalized image whose projection is resolved.
+     * @returns the dimensions and byte target the request encoder receives.
+     */
+    imageRequestTarget(_provider: string, _model: string, image: ImageAttachmentRef): ImageRequestTarget;
     listModels(provider: string): Promise<readonly LlmModelInfo[]>;
     resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;
     stream(options: GenerateOptions): AsyncIterable<StreamChunk>;

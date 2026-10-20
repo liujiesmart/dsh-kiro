@@ -14,8 +14,10 @@
 
 ## 安装
 
+需要 DeepSeek Harness `0.2.1-rc.2` 或更高版本。
+
 ```sh
-dsh plugin --profile web add github:dat-lequoc/dsh-kiro
+dsh plugin --profile web add github:liujiesmart/dsh-kiro
 dsh --profile web
 ```
 
@@ -23,7 +25,7 @@ dsh --profile web
 
 ```sh
 cd ~/deepseek-harness
-pnpm dsh plugin --profile web add github:dat-lequoc/dsh-kiro
+pnpm dsh plugin --profile web add github:liujiesmart/dsh-kiro
 pnpm dsh --profile web
 ```
 
@@ -197,6 +199,8 @@ Kiro 没有独立 system 槽位，因此 harness system prompt 会放入最早�
 只要模型的目录条目声明了 `supportedInputTypes: ["TEXT","IMAGE"]`，即可发送图片——在实测账号上为 19 个模型中的 17 个，包含全部 Claude 路由；`glm-5` 与 `minimax-m2.5` 只报告文本。该能力从目录读取而非按模型 id 猜测，因此路由获得或失去该能力都无需改代码；`models[].inputModalities` 可在某个套餐不一致时覆盖，而完全没有声明的模型保持纯文本——未声明的能力不应被假定。
 
 Kiro 接受 png、jpeg、gif 与 webp。图片会在 base64 展开前重新编码到最多 8000x8000 像素、3.75 MB，与其模型所在服务的上限一致，并以 `userInputMessage.images` 发送，即 `ImageBlock { format, source: { bytes } }`。
+
+适配器会把同一个投影作为 request-image target 上报给 harness，因此 harness 计量与计价的正是请求真正携带的那张图片，而不是更大的原始归一化图片。
 
 在该协议中只有 user 轮次有图片位置。服务的 `AssistantResponseMessage` 没有该字段，因此历史中 assistant 侧的图片会被拒绝而不是被丢弃；`ToolResultContentBlock` 只是 text 与 json 的联合，因此工具返回的图片会被提升到携带该工具结果的 user 轮次上——这是能保留它的最近位置。图片字节存放在 harness 的 attachment 服务中，因此未挂载该服务、或版本早于其 request-image 编码器的 profile，会直接报告不支持图片，而不是在请求中途失败。
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-kiro",
   "description": "Kiro provider for DeepSeek Harness with multi-method login, usage, model controls, and token/profile refresh",
-  "version": "0.1.19",
+  "version": "0.2.1",
   "type": "module",
   "license": "MIT",
   "author": {
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dat-lequoc/dsh-kiro.git"
+    "url": "git+https://github.com/liujiesmart/dsh-kiro.git"
   },
   "keywords": [
     "deepseek-harness",
@@ -24,9 +24,9 @@
     "oauth",
     "reasoning"
   ],
-  "homepage": "https://github.com/dat-lequoc/dsh-kiro#readme",
+  "homepage": "https://github.com/liujiesmart/dsh-kiro#readme",
   "bugs": {
-    "url": "https://github.com/dat-lequoc/dsh-kiro/issues"
+    "url": "https://github.com/liujiesmart/dsh-kiro/issues"
   },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -83,15 +83,15 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-attachment": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-home-paths": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-settings": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-timeout": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-util-values": "0.2.0-rc.1"
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-timeout": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.1-rc.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -120,18 +120,18 @@
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-attachment": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-home-paths": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-settings": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-timeout": "0.2.0-rc.1",
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-timeout": "0.2.1-rc.2",
     "@types/node": "^22.10.0",
     "tsdown": "^0.15.6",
     "typescript": "^5.7.3",
     "vitest": "^4.1.8",
-    "@deepseek-ai/dsh-util-values": "0.2.0-rc.1"
+    "@deepseek-ai/dsh-util-values": "0.2.1-rc.2"
   }
 }

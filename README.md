@@ -14,8 +14,10 @@ This is an independent integration and is not affiliated with or endorsed by AWS
 
 ## Install
 
+Requires DeepSeek Harness `0.2.1-rc.2` or newer.
+
 ```sh
-dsh plugin --profile web add github:dat-lequoc/dsh-kiro
+dsh plugin --profile web add github:liujiesmart/dsh-kiro
 dsh --profile web
 ```
 
@@ -23,7 +25,7 @@ From a DeepSeek Harness source checkout, use its launcher:
 
 ```sh
 cd ~/deepseek-harness
-pnpm dsh plugin --profile web add github:dat-lequoc/dsh-kiro
+pnpm dsh plugin --profile web add github:liujiesmart/dsh-kiro
 pnpm dsh --profile web
 ```
 
@@ -204,6 +206,8 @@ Nothing else has an accepted placement. `temperature`, `topP`, and stop sequence
 Every model whose catalog entry declares `supportedInputTypes: ["TEXT","IMAGE"]` accepts images — on the verified account that is 17 of 19, including all Claude routes, with `glm-5` and `minimax-m2.5` reporting text only. The capability is read from the catalog rather than guessed from the model id, so a route that gains or loses it needs no code change; `models[].inputModalities` overrides it when a tier disagrees, and a model that states nothing stays text-only because an unstated capability must not be assumed.
 
 Kiro accepts png, jpeg, gif and webp. Images are re-encoded to at most 8000x8000 pixels and 3.75 MB before base64 expansion, matching the bounds of the service its models run behind, and travel as `userInputMessage.images` — `ImageBlock { format, source: { bytes } }`.
+
+The adapter reports that same projection to the harness as its request-image target, so the harness budgets and prices exactly the image the request carries rather than the larger normalized original.
 
 Only user turns have an image seat on this wire. The service's `AssistantResponseMessage` has none, so an image in replayed assistant history is refused rather than dropped, and `ToolResultContentBlock` is a union of text and json only, so an image returned by a tool is hoisted onto the user turn that carries its result — the nearest place that keeps it. Image bytes live in the harness's attachment service, so a profile that mounts none, or one older than that service's request-image encoder, reports images as unsupported instead of failing mid-request.
 

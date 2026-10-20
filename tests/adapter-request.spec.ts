@@ -238,6 +238,39 @@ describe('Kiro request identity and generation options', () => {
     expect(chunks.some(chunk => chunk.type === 'text-delta')).toBe(true)
   })
 
+  it('reports the same image target the request actually encodes', async () => {
+    // The harness asks the adapter for the request-image target so it can
+    // budget and price the image. A target that differed from the one the
+    // request encodes would make the harness account for an image the adapter
+    // never sends, so the two must be the same value.
+    respond = () => okResponse(textFrame('a cat'))
+    const targets: unknown[] = []
+    const instance = adapter(connection(), {
+      resolveAttachments: () => ({
+        readImageRequest: async (_ref: { attachmentId: string }, target: unknown) => {
+          targets.push(target)
+          return { data: new Uint8Array([1, 2, 3]), mediaType: 'image/png' as const }
+        },
+      }),
+    })
+    for await (const _chunk of instance.stream({
+      provider: 'kiro',
+      model: 'claude-opus-5',
+      messages: [userImage('att-1', 'what is this?')],
+    } as GenerateOptions)) { /* the turn completes */ }
+
+    // The image the request carried is 1x1, so the projection keeps it and
+    // only the byte ceiling applies.
+    expect(targets).toEqual([{ width: 1, height: 1, maxBytes: 3_750_000 }])
+    expect(instance.imageRequestTarget('kiro', 'claude-opus-5', {
+      attachmentId: 'att-1',
+      mediaType: 'image/png',
+      bytes: 3,
+      width: 1,
+      height: 1,
+    } as never)).toEqual(targets[0])
+  })
+
   it('refuses an image for a model the catalog reports as text-only', async () => {
     // Refused before any byte is read: the service would reject the whole turn,
     // and the harness gates on the same capability this reports.
