@@ -39,7 +39,7 @@ function assistant(text: string, calls: { id: string; name: string; args: string
         arguments: call.args,
       })),
     ],
-    source: { provider: 'kiro', model: 'claude-sonnet-4.5' },
+    source: { provider: 'dsh-kiro', model: 'claude-sonnet-4.5' },
   })
 }
 
@@ -49,7 +49,7 @@ function toolResult(id: string, text: string): Message {
 
 function serialize(messages: Message[], extra: Partial<GenerateOptions> = {}, defaults = {}) {
   return serializeRequest(
-    { provider: 'kiro', model: 'claude-sonnet-4.5', messages, ...extra },
+    { provider: 'dsh-kiro', model: 'claude-sonnet-4.5', messages, ...extra },
     defaults,
     'conv-1',
   )
@@ -581,7 +581,7 @@ describe('P1-3 generation options reach the only field that accepts them', () =>
 
   function serializeFor(extra: Partial<GenerateOptions>) {
     return serializeRequest(
-      { provider: 'kiro', model: 'claude-opus-5', messages: [user('hi')], ...extra },
+      { provider: 'dsh-kiro', model: 'claude-opus-5', messages: [user('hi')], ...extra },
       {},
       'conv-1',
       undefined,
@@ -612,7 +612,7 @@ describe('P1-3 generation options reach the only field that accepts them', () =>
   it('sends nothing at all to a model that advertises no request-field schema', () => {
     const request = serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-sonnet-4.5',
         messages: [user('hi')],
         maxTokens: 4096,
@@ -628,7 +628,7 @@ describe('P1-3 generation options reach the only field that accepts them', () =>
   it('omits the cap when the model advertises a schema without max_tokens', () => {
     const request = serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'gpt-5.6-sol',
         messages: [user('hi')],
         maxTokens: 4096,

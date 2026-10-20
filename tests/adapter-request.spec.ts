@@ -105,7 +105,7 @@ async function turn(
 ): Promise<WireRequest> {
   const chunks: unknown[] = []
   for await (const chunk of instance.stream({
-    provider: 'kiro',
+    provider: 'dsh-kiro',
     model: 'claude-opus-5',
     messages: [user('hello')],
     ...extra,
@@ -198,7 +198,7 @@ describe('Kiro request identity and generation options', () => {
     )
     const chunks: { type: string }[] = []
     for await (const chunk of adapter().stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model: 'claude-opus-5',
       messages: [user('hello')],
     } as GenerateOptions)) {
@@ -222,7 +222,7 @@ describe('Kiro request identity and generation options', () => {
         },
       }),
     }).stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model: 'claude-opus-5',
       messages: [userImage('att-1', 'what is this?')],
     } as GenerateOptions)) {
@@ -254,7 +254,7 @@ describe('Kiro request identity and generation options', () => {
       }),
     })
     for await (const _chunk of instance.stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model: 'claude-opus-5',
       messages: [userImage('att-1', 'what is this?')],
     } as GenerateOptions)) { /* the turn completes */ }
@@ -262,7 +262,7 @@ describe('Kiro request identity and generation options', () => {
     // The image the request carried is 1x1, so the projection keeps it and
     // only the byte ceiling applies.
     expect(targets).toEqual([{ width: 1, height: 1, maxBytes: 3_750_000 }])
-    expect(instance.imageRequestTarget('kiro', 'claude-opus-5', {
+    expect(instance.imageRequestTarget('dsh-kiro', 'claude-opus-5', {
       attachmentId: 'att-1',
       mediaType: 'image/png',
       bytes: 3,
@@ -285,7 +285,7 @@ describe('Kiro request identity and generation options', () => {
           },
         }),
       }).stream({
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'glm-5',
         messages: [userImage('att-1')],
       } as GenerateOptions)) { /* the first pull throws */ }
@@ -296,7 +296,7 @@ describe('Kiro request identity and generation options', () => {
   it('refuses an image when the profile mounts no attachment service', async () => {
     await expect((async () => {
       for await (const _chunk of adapter().stream({
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-opus-5',
         messages: [userImage('att-1')],
       } as GenerateOptions)) { /* the first pull throws */ }
@@ -313,7 +313,7 @@ describe('Kiro request identity and generation options', () => {
           }),
         }),
       }).stream({
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-opus-5',
         messages: [userImage('att-1')],
       } as GenerateOptions)) { /* the first pull throws */ }
@@ -336,7 +336,7 @@ describe('Kiro request identity and generation options', () => {
     )
     const chunks: { type: string }[] = []
     for await (const chunk of adapter().stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model: 'claude-opus-5',
       messages: [user('hello')],
     } as GenerateOptions)) {

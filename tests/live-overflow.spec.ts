@@ -33,7 +33,7 @@ describe.runIf(process.env.KIRO_LIVE === '1')('live Kiro overflow classification
     const filler = 'The quick brown fox jumps over the lazy dog. '.repeat(30_000)
     const body = serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-sonnet-4.5',
         messages: [{
           role: 'user',

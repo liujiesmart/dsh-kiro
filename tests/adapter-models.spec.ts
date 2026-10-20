@@ -44,11 +44,11 @@ describe('Kiro model publication', () => {
   })
 
   it('advertises each model’s live efforts and provider default', async () => {
-    const reasoning = (await adapter().resolveModel('kiro', 'thinking')).reasoning
+    const reasoning = (await adapter().resolveModel('dsh-kiro', 'thinking')).reasoning
     expect(reasoning?.efforts.map(effort => effort.id)).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(reasoning?.efforts.map(effort => effort.name)).toContain('xHigh')
     expect(reasoning?.defaultEffort).toBe('xhigh')
-    expect((await adapter().resolveModel('kiro', 'plain')).reasoning).toMatchObject({
+    expect((await adapter().resolveModel('dsh-kiro', 'plain')).reasoning).toMatchObject({
       efforts: [{ id: 'off' }],
       defaultEffort: 'off',
     })
@@ -59,8 +59,8 @@ describe('Kiro model publication', () => {
       connection({ defaults: { reasoningEffort: 'medium' } }),
       async models => models.filter(model => model.id === 'thinking'),
     )
-    expect((await instance.resolveModel('kiro', 'thinking')).reasoning?.defaultEffort).toBe('medium')
-    await expect(instance.listModels('kiro')).resolves.toEqual([expect.objectContaining({ id: 'thinking' })])
-    await expect(instance.resolveModel('kiro', 'plain')).resolves.toMatchObject({ id: 'plain' })
+    expect((await instance.resolveModel('dsh-kiro', 'thinking')).reasoning?.defaultEffort).toBe('medium')
+    await expect(instance.listModels('dsh-kiro')).resolves.toEqual([expect.objectContaining({ id: 'thinking' })])
+    await expect(instance.resolveModel('dsh-kiro', 'plain')).resolves.toMatchObject({ id: 'plain' })
   })
 })

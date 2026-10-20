@@ -23,7 +23,7 @@ function assistant(text: string, calls: { id: string; name: string; args: string
         arguments: call.args,
       })),
     ],
-    source: { provider: 'kiro', model: 'claude-sonnet-4.5' },
+    source: { provider: 'dsh-kiro', model: 'claude-sonnet-4.5' },
   })
 }
 
@@ -44,7 +44,7 @@ function serialize(
   images?: ReadonlyMap<string, WireImageBlock>,
 ) {
   return serializeRequest(
-    { provider: 'kiro', model: 'claude-sonnet-4.5', messages, ...extra },
+    { provider: 'dsh-kiro', model: 'claude-sonnet-4.5', messages, ...extra },
     defaults,
     'conv-1',
     'arn:aws:codewhisperer:us-east-1:1:profile/X',
@@ -94,7 +94,7 @@ describe('serializeRequest', () => {
 
   it('omits profileArn when the account default applies', () => {
     const request = serializeRequest(
-      { provider: 'kiro', model: 'auto', messages: [user('hi')] },
+      { provider: 'dsh-kiro', model: 'auto', messages: [user('hi')] },
       {},
       'conv-1',
     )
@@ -129,7 +129,7 @@ describe('serializeRequest', () => {
   it('sends discovered Claude efforts through output_config without prompt markers', () => {
     const request = serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-opus-5',
         messages: [user('hi')],
         reasoningEffort: 'max' as never,
@@ -150,7 +150,7 @@ describe('serializeRequest', () => {
 
   it('uses the live GPT default and reasoning schema path', () => {
     const request = serializeRequest(
-      { provider: 'kiro', model: 'gpt-5.6-sol', messages: [user('hi')] },
+      { provider: 'dsh-kiro', model: 'gpt-5.6-sol', messages: [user('hi')] },
       {},
       'conv-1',
       undefined,
@@ -166,7 +166,7 @@ describe('serializeRequest', () => {
   it('rejects an effort absent from the selected model’s live schema', () => {
     expect(() => serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model: 'claude-opus-4.6',
         messages: [user('hi')],
         reasoningEffort: 'xhigh' as never,

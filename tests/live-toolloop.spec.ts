@@ -52,7 +52,7 @@ describe.runIf(process.env.KIRO_LIVE === '1')('live Kiro tool loop', () => {
     const source = { kind: 'plugin' as const, plugin: 'toolloop' }
     const first: StreamChunk[] = []
     for await (const chunk of adapter.stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model,
       sessionId: 'toolloop-session',
       system: 'Use the provided tool when a question needs it.',
@@ -76,7 +76,7 @@ describe.runIf(process.env.KIRO_LIVE === '1')('live Kiro tool loop', () => {
     // result: the exact history shape that used to carry the leaked marker.
     const second: StreamChunk[] = []
     for await (const chunk of adapter.stream({
-      provider: 'kiro',
+      provider: 'dsh-kiro',
       model,
       sessionId: 'toolloop-session',
       system: 'Use the provided tool when a question needs it.',
@@ -89,7 +89,7 @@ describe.runIf(process.env.KIRO_LIVE === '1')('live Kiro tool loop', () => {
         {
           role: 'assistant',
           content: [call.block],
-          source: { provider: 'kiro', model },
+          source: { provider: 'dsh-kiro', model },
         },
         {
           role: 'tool',

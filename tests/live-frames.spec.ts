@@ -56,7 +56,7 @@ describe.runIf(process.env.KIRO_LIVE === '1')('live Kiro frame capture', () => {
         }
     const body = serializeRequest(
       {
-        provider: 'kiro',
+        provider: 'dsh-kiro',
         model,
         messages: [{
           role: 'user',

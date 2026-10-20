@@ -108,7 +108,7 @@ describe.runIf(process.env.DSH_SESSIONS === '1' && existsSync(SESSION_ROOT))(
         // recorded multimodal session is not what this probe is about.
         if (messages.some(message => message.content.some(block => block.type === 'image'))) continue
         const request = serializeRequest(
-          { provider: 'kiro', model: 'claude-opus-5', messages } as GenerateOptions,
+          { provider: 'dsh-kiro', model: 'claude-opus-5', messages } as GenerateOptions,
           {},
           'replay',
         )
