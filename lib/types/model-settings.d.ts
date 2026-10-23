@@ -21,7 +21,7 @@ export declare class FileModelSettingsStore {
     mergeCatalog(models: readonly KiroCatalogModel[]): Promise<KiroModelSettings>;
     /** Persist an exact checkbox selection, constrained to the current catalog. */
     setEnabledModelIds(enabledModelIds: readonly string[], models: readonly KiroCatalogModel[]): Promise<KiroModelSettings>;
-    /** Resolve enabled models; a missing settings file means all are enabled. */
+    /** Resolve enabled models; a missing or emptied selection means all are enabled. */
     enabledModels(models: readonly KiroCatalogModel[]): Promise<readonly KiroCatalogModel[]>;
 }
 /** Project a full catalog into the compact checkbox API shape. */

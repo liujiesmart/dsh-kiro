@@ -87,7 +87,7 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     region: z<string, string, "volatile">;
     profileArn: z<string, string, "volatile">;
     thinking: z<"enabled" | "disabled", "enabled" | "disabled", "volatile">;
-    reasoningEffort: z<"off" | "low" | "medium" | "high" | "xhigh" | "none" | "max", "off" | "low" | "medium" | "high" | "xhigh" | "none" | "max", "volatile">;
+    reasoningEffort: z<"none" | "off" | "low" | "medium" | "high" | "xhigh" | "max", "none" | "off" | "low" | "medium" | "high" | "xhigh" | "max", "volatile">;
     defaultContextWindow: z<number, number, "volatile-defined">;
     models: z<NoInfer<KiroCatalogModel[]>, NoInfer<KiroCatalogModel[]>, "volatile-defined">;
     streamIdleTimeoutMs: z<number, number, "volatile-defined">;
@@ -98,7 +98,7 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     region: z<string, string, "volatile">;
     profileArn: z<string, string, "volatile">;
     thinking: z<"enabled" | "disabled", "enabled" | "disabled", "volatile">;
-    reasoningEffort: z<"off" | "low" | "medium" | "high" | "xhigh" | "none" | "max", "off" | "low" | "medium" | "high" | "xhigh" | "none" | "max", "volatile">;
+    reasoningEffort: z<"none" | "off" | "low" | "medium" | "high" | "xhigh" | "max", "none" | "off" | "low" | "medium" | "high" | "xhigh" | "max", "volatile">;
     defaultContextWindow: z<number, number, "volatile-defined">;
     models: z<NoInfer<KiroCatalogModel[]>, NoInfer<KiroCatalogModel[]>, "volatile-defined">;
     streamIdleTimeoutMs: z<number, number, "volatile-defined">;

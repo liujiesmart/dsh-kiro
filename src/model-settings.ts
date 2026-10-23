@@ -119,6 +119,9 @@ export class FileModelSettingsStore {
     const catalogIds = [...new Set(models.map(model => model.id))]
     const catalog = new Set(catalogIds)
     return this.modify((current) => {
+      // A discovery that observed nothing says nothing about the stored choice;
+      // writing the empty catalog would erase a selection for no reason.
+      if (catalogIds.length === 0) return undefined
       const known = new Set(current.knownModelIds)
       const enabled = current.knownModelIds.length === 0
         ? catalogIds
@@ -127,11 +130,18 @@ export class FileModelSettingsStore {
             ...catalogIds.filter(id => !known.has(id)),
           ]
       const enabledModelIds = [...new Set(enabled)]
-      if (enabledModelIds.length === current.enabledModelIds.length
-        && enabledModelIds.every((id, index) => id === current.enabledModelIds[index])
+      // An empty selection is not a state the provider can occupy: a route with
+      // no models is hidden from every picker, including the settings page that
+      // would turn models back on, and only an explicit `knownModelIds` of zero
+      // ever re-enables ids by itself. Losing every previously enabled id — a
+      // partial catalog, a different account, a region switch — therefore falls
+      // back to the full catalog instead of persisting a selection of nothing.
+      const selection = enabledModelIds.length === 0 ? catalogIds : enabledModelIds
+      if (selection.length === current.enabledModelIds.length
+        && selection.every((id, index) => id === current.enabledModelIds[index])
         && catalogIds.length === current.knownModelIds.length
         && catalogIds.every((id, index) => id === current.knownModelIds[index])) return undefined
-      return { enabledModelIds, knownModelIds: catalogIds, updatedAt: current.updatedAt }
+      return { enabledModelIds: selection, knownModelIds: catalogIds, updatedAt: current.updatedAt }
     })
   }
 
@@ -142,17 +152,24 @@ export class FileModelSettingsStore {
   ): Promise<KiroModelSettings> {
     const catalogIds = [...new Set(models.map(model => model.id))]
     const requested = new Set(validIds(enabledModelIds))
+    const chosen = catalogIds.filter(id => requested.has(id))
     return this.modify(current => ({
-      enabledModelIds: catalogIds.filter(id => requested.has(id)),
+      // Clearing every box is read as "back to the default", because a route
+      // with no enabled model disappears from the model picker entirely and
+      // leaves no way to re-enable it from inside the harness.
+      enabledModelIds: chosen.length === 0 ? catalogIds : chosen,
       knownModelIds: catalogIds,
       updatedAt: current.updatedAt,
     }))
   }
 
-  /** Resolve enabled models; a missing settings file means all are enabled. */
+  /** Resolve enabled models; a missing or emptied selection means all are enabled. */
   async enabledModels(models: readonly KiroCatalogModel[]): Promise<readonly KiroCatalogModel[]> {
     const settings = await this.read()
-    const enabled = settings.knownModelIds.length === 0
+    // `enabledModelIds` can be empty on disk from an older build or a partial
+    // catalog merge; treat it like "no settings yet" so an already locked
+    // installation heals on the next read instead of staying hidden forever.
+    const enabled = settings.knownModelIds.length === 0 || settings.enabledModelIds.length === 0
       ? new Set(models.map(model => model.id))
       : new Set(settings.enabledModelIds)
     return models.filter(model => enabled.has(model.id)).sort(compareKiroModels)
@@ -165,7 +182,7 @@ export async function modelSelection(
   models: readonly KiroCatalogModel[],
 ): Promise<{ enabledModelIds: readonly string[]; models: readonly (KiroCatalogModel & { enabled: boolean })[] }> {
   const settings = await store.read()
-  const enabled = settings.knownModelIds.length === 0
+  const enabled = settings.knownModelIds.length === 0 || settings.enabledModelIds.length === 0
     ? new Set(models.map(model => model.id))
     : new Set(settings.enabledModelIds)
   const projected = models.map(model => ({ ...model, enabled: enabled.has(model.id) }))
