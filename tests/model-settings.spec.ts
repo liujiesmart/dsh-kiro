@@ -68,7 +68,10 @@ describe('Kiro model settings', () => {
       .resolves.toHaveLength(1)
   })
 
-  it('heals a settings file that already holds an empty selection', async () => {
+  it('honours a stored selection of nothing instead of healing it away', async () => {
+    // `knownModelIds` is the "has this installation ever been configured"
+    // signal. Once it is populated, an empty selection is a choice the user
+    // made, not a damaged file, and re-enabling everything would overrule it.
     const fixture = await store()
     await writeFile(fixture.file, JSON.stringify({
       enabledModelIds: [],
@@ -76,18 +79,43 @@ describe('Kiro model settings', () => {
       updatedAt: 1,
     }))
     const models = catalog('claude-opus-5', 'gpt-5.6-sol')
-    await expect(fixture.store.enabledModels(models)).resolves.toHaveLength(2)
+    await expect(fixture.store.enabledModels(models)).resolves.toEqual([])
     await expect(modelSelection(fixture.store, models)).resolves.toMatchObject({
-      enabledModelIds: ['claude-opus-5', 'gpt-5.6-sol'],
+      enabledModelIds: [],
+      models: [{ enabled: false }, { enabled: false }],
     })
   })
 
-  it('treats clearing every checkbox as the default selection', async () => {
+  it('treats a file with no recorded catalog as never configured', async () => {
+    const fixture = await store()
+    await writeFile(fixture.file, JSON.stringify({ enabledModelIds: [], knownModelIds: [], updatedAt: 0 }))
+    const models = catalog('claude-opus-5', 'gpt-5.6-sol')
+    await expect(fixture.store.enabledModels(models)).resolves.toHaveLength(2)
+  })
+
+  it('deselects everything on an explicit empty selection and selects it back', async () => {
+    // The Deselect all button sends `[]`. Reading that as "reset to default"
+    // made the button do nothing, which is the bug this pins.
     const fixture = await store()
     const models = catalog('claude-opus-5', 'gpt-5.6-sol')
     await fixture.store.mergeCatalog(models)
     const settings = await fixture.store.setEnabledModelIds([], models)
-    expect(settings.enabledModelIds).toEqual(['claude-opus-5', 'gpt-5.6-sol'])
+    expect(settings.enabledModelIds).toEqual([])
+    await expect(fixture.store.enabledModels(models)).resolves.toEqual([])
+
+    // A later discovery must not undo the choice either.
+    const discovered = catalog('claude-opus-5', 'gpt-5.6-sol', 'claude-opus-6')
+    await fixture.store.mergeCatalog(discovered)
+    await expect(fixture.store.enabledModels(discovered)).resolves.toEqual([])
+
+    // The settings card still lists every model, which is what makes it undoable.
+    const selection = await modelSelection(fixture.store, discovered)
+    expect(selection.enabledModelIds).toEqual([])
+    expect(selection.models.every(model => !model.enabled)).toBe(true)
+
+    // Select all restores the route.
+    await fixture.store.setEnabledModelIds(discovered.map(model => model.id), discovered)
+    await expect(fixture.store.enabledModels(discovered)).resolves.toHaveLength(3)
   })
 
   it('leaves the stored selection alone when discovery observed no models', async () => {

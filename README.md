@@ -121,6 +121,8 @@ An installation that still holds only the older single-credential file is read a
 
 The adapter asks the auth-appropriate Amazon Q/CodeWhisperer surface for the signed-in account and caches the result for five minutes. **Settings → Kiro → Discover models** forces a refresh. The compact model selector controls which routes appear in DSH; choices persist in `$DSH_HOME/storages/kiro-auth/model-settings.json`, and newly discovered models are enabled automatically. Selected models appear first, with the latest version first inside each family. If discovery is temporarily unavailable, the configured fallback catalog remains usable; unlisted model IDs are still passed through to Kiro so an existing session is not broken by a checkbox change.
 
+**Select all** and **Deselect all** store exactly what they say. Deselecting every model leaves the route publishing no model — the settings card keeps listing the full discovered catalog, so **Select all** is always available to undo it — and the card says so instead of leaving an empty picker unexplained. The only emptiness the store repairs by itself is the accidental kind: a selection that was non-empty and lost every id to a partial catalog, another account, or a region switch falls back to the catalog just observed, because a background refresh is no answer to a choice the user made. A `knownModelIds` of zero is the single "never configured" signal, which is what keeps an older build's empty file from hiding the route forever.
+
 The account card also reads Kiro's credit usage, plan, and reset date. Usage is cached for five minutes, refreshed when the settings page opens, and can be forced with **Refresh usage**. A quota failure does not disable chat or discard the last successful reading.
 
 Each route advertises the effort enum and default from its live
@@ -196,14 +198,18 @@ The terminal `metadataEvent` supplies the finish reason: `END_TURN`, `TOOL_USE`,
 
 ### Refusal recovery
 
-A silent refusal — HTTP 200, usage and metering frames, no assistant event and no `stopReason` — is deterministic for the exact bytes that were sent, so re-sending the same request cannot help. What can help is sending a strictly smaller one, which is what `refusalRecovery: narrow` does. Each rung is smaller than the last, and the ladder stops as soon as a rung produces content:
+A silent refusal — HTTP 200, usage and metering frames, no assistant event and no `stopReason` — is deterministic for the exact bytes that were sent, so re-sending the same request cannot help. What can help is sending a strictly smaller one, which is what `refusalRecovery: narrow` does. The order the request gets smaller in is the whole design: history is the conversation the user is having, system text is the operator's standing instructions, so the system prompt is shed first and the conversation only as a last resort.
 
 | Rung | Request |
 |---|---|
 | original | the harness request, unchanged |
-| 1 | the last 6 messages, system prompt intact |
-| 2 | the last 2 messages, system prompt clipped to 8,000 characters at a paragraph boundary |
-| 3 | the current turn only, no system prompt |
+| 1 | the same conversation, system prompt clipped to 8,000 characters at a paragraph boundary |
+| 2 | the same conversation, no system prompt |
+| 3 | the last 6 messages, no system prompt |
+
+Rungs 1 and 2 keep every turn, so a recovered turn still answers the message in context; rung 3 trades the oldest turns for a request small enough to be accepted, and is never smaller than recent history. Tool definitions are never dropped — a turn that cannot call tools is not the turn the harness asked for.
+
+Because a session re-sends the same system prompt and model every turn, the rung that was answered is remembered per session: the next turn starts there instead of paying the same refusals again, which matters because every refused attempt is billed to the account. A turn that is answered at the original rung clears the memory.
 
 Three properties make the retry safe to run by default:
 

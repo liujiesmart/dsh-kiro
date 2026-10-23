@@ -85,6 +85,7 @@ window.__ModuleLoader__.load({
       refreshing: 'Discovering…',
       selectAll: 'Select all',
       deselectAll: 'Deselect all',
+      noneSelected: 'Every model is deselected, so this provider publishes no model and cannot answer. Select at least one to use it.',
       selected: 'selected',
       saving: 'Saving…',
       configured: 'Configured fallback catalog',
@@ -174,6 +175,7 @@ window.__ModuleLoader__.load({
       refreshing: '发现中…',
       selectAll: '全选',
       deselectAll: '取消全选',
+      noneSelected: '所有模型都已取消选择，因此该 provider 不会发布任何模型，也无法应答。请至少选择一个模型。',
       selected: '已选择',
       saving: '保存中…',
       configured: '配置的后备模型目录',
@@ -939,7 +941,9 @@ textarea.dshk-input{min-height:78px;resize:vertical;font-family:ui-monospace,SFM
               busy === 'models-save' ? t('saving') : `${enabledModelIds.length}/${models.length} ${t('selected')}`)),
           models.length === 0
             ? React.createElement('div', { className: 'dshk-empty' }, t('noModels'))
-            : React.createElement('div', { className: 'dshk-list' }, models.map((model) => {
+            : React.createElement('div', null,
+              enabledModelIds.length === 0 && React.createElement('div', { className: 'dshk-notice', role: 'status' }, t('noneSelected')),
+              React.createElement('div', { className: 'dshk-list' }, models.map((model) => {
                 const context = formatTokens(model.contextWindow)
                 const output = formatTokens(model.maxTokens)
                 const metadata = [
@@ -958,7 +962,7 @@ textarea.dshk-input{min-height:78px;resize:vertical;font-family:ui-monospace,SFM
                 React.createElement('span', { className: 'dshk-model-text' },
                   React.createElement('span', { className: 'dshk-model-name' }, model.name),
                   React.createElement('span', { className: 'dshk-model-sub', title: metadata }, metadata)))
-              }))),
+              })))),
         authOpen && React.createElement('div', {
           className: 'dshk-overlay',
           role: 'presentation',

@@ -114,7 +114,16 @@ export class FileModelSettingsStore {
     return next
   }
 
-  /** Merge a fresh catalog, enabling first-run and newly discovered model ids. */
+  /**
+   * Merge a fresh catalog, enabling first-run and newly discovered model ids.
+   *
+   * An explicit "nothing enabled" selection is a state the user can create with
+   * the Deselect all button, so a merge must not silently undo it: the user
+   * turned those models off and a background refresh is no answer to that. What
+   * a merge must still repair is the other, accidental emptiness — a selection
+   * that was non-empty and lost every id to a partial catalog, another account,
+   * or a region switch — which falls back to the catalog it just observed.
+   */
   mergeCatalog(models: readonly KiroCatalogModel[]): Promise<KiroModelSettings> {
     const catalogIds = [...new Set(models.map(model => model.id))]
     const catalog = new Set(catalogIds)
@@ -122,21 +131,21 @@ export class FileModelSettingsStore {
       // A discovery that observed nothing says nothing about the stored choice;
       // writing the empty catalog would erase a selection for no reason.
       if (catalogIds.length === 0) return undefined
+      const explicitNone = current.knownModelIds.length > 0 && current.enabledModelIds.length === 0
       const known = new Set(current.knownModelIds)
-      const enabled = current.knownModelIds.length === 0
-        ? catalogIds
-        : [
-            ...current.enabledModelIds.filter(id => catalog.has(id)),
-            ...catalogIds.filter(id => !known.has(id)),
-          ]
+      const enabled = explicitNone
+        ? []
+        : current.knownModelIds.length === 0
+          ? catalogIds
+          : [
+              ...current.enabledModelIds.filter(id => catalog.has(id)),
+              ...catalogIds.filter(id => !known.has(id)),
+            ]
       const enabledModelIds = [...new Set(enabled)]
-      // An empty selection is not a state the provider can occupy: a route with
-      // no models is hidden from every picker, including the settings page that
-      // would turn models back on, and only an explicit `knownModelIds` of zero
-      // ever re-enables ids by itself. Losing every previously enabled id — a
-      // partial catalog, a different account, a region switch — therefore falls
-      // back to the full catalog instead of persisting a selection of nothing.
-      const selection = enabledModelIds.length === 0 ? catalogIds : enabledModelIds
+      // Selection of nothing that the user did not ask for: a route with no
+      // models is invisible to every picker, so losing every previously enabled
+      // id falls back to the full catalog instead of persisting an accident.
+      const selection = enabledModelIds.length === 0 && !explicitNone ? catalogIds : enabledModelIds
       if (selection.length === current.enabledModelIds.length
         && selection.every((id, index) => id === current.enabledModelIds[index])
         && catalogIds.length === current.knownModelIds.length
@@ -145,44 +154,60 @@ export class FileModelSettingsStore {
     })
   }
 
-  /** Persist an exact checkbox selection, constrained to the current catalog. */
+  /**
+   * Persist an exact checkbox selection, constrained to the current catalog.
+   *
+   * Clearing every box is a real choice — the Deselect all button exists to make
+   * it — so it is stored as it was asked for. The route then publishes no model
+   * until the user re-enables one from Settings → Kiro, which reads the whole
+   * discovered catalog and is therefore always able to undo this. Treating the
+   * empty request as "reset to everything" instead makes that button a no-op,
+   * which is exactly the bug this method refuses to reproduce.
+   */
   setEnabledModelIds(
     enabledModelIds: readonly string[],
     models: readonly KiroCatalogModel[],
   ): Promise<KiroModelSettings> {
     const catalogIds = [...new Set(models.map(model => model.id))]
     const requested = new Set(validIds(enabledModelIds))
-    const chosen = catalogIds.filter(id => requested.has(id))
     return this.modify(current => ({
-      // Clearing every box is read as "back to the default", because a route
-      // with no enabled model disappears from the model picker entirely and
-      // leaves no way to re-enable it from inside the harness.
-      enabledModelIds: chosen.length === 0 ? catalogIds : chosen,
+      enabledModelIds: catalogIds.filter(id => requested.has(id)),
       knownModelIds: catalogIds,
       updatedAt: current.updatedAt,
     }))
   }
 
-  /** Resolve enabled models; a missing or emptied selection means all are enabled. */
+  /**
+   * Resolve enabled models.
+   *
+   * `knownModelIds` is the only "never configured" signal: while it is empty the
+   * installation has no stored choice and everything is enabled. Once it is
+   * populated, `enabledModelIds` is the exact selection and an empty one means
+   * empty — an older build's empty file heals on read, a deliberate one does
+   * not.
+   */
   async enabledModels(models: readonly KiroCatalogModel[]): Promise<readonly KiroCatalogModel[]> {
     const settings = await this.read()
-    // `enabledModelIds` can be empty on disk from an older build or a partial
-    // catalog merge; treat it like "no settings yet" so an already locked
-    // installation heals on the next read instead of staying hidden forever.
-    const enabled = settings.knownModelIds.length === 0 || settings.enabledModelIds.length === 0
+    const enabled = settings.knownModelIds.length === 0
       ? new Set(models.map(model => model.id))
       : new Set(settings.enabledModelIds)
     return models.filter(model => enabled.has(model.id)).sort(compareKiroModels)
   }
 }
 
-/** Project a full catalog into the compact checkbox API shape. */
+/**
+ * Project a full catalog into the compact checkbox API shape.
+ *
+ * The full catalog is always projected, never only the enabled subset: this is
+ * the payload the settings card renders, so it has to keep listing the models a
+ * user turned off in order to be able to turn them back on.
+ */
 export async function modelSelection(
   store: FileModelSettingsStore,
   models: readonly KiroCatalogModel[],
 ): Promise<{ enabledModelIds: readonly string[]; models: readonly (KiroCatalogModel & { enabled: boolean })[] }> {
   const settings = await store.read()
-  const enabled = settings.knownModelIds.length === 0 || settings.enabledModelIds.length === 0
+  const enabled = settings.knownModelIds.length === 0
     ? new Set(models.map(model => model.id))
     : new Set(settings.enabledModelIds)
   const projected = models.map(model => ({ ...model, enabled: enabled.has(model.id) }))

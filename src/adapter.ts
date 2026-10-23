@@ -461,6 +461,9 @@ type AttemptOutcome =
   | { kind: 'streamed' }
   | { kind: 'refused'; held: readonly StreamChunk[]; finish: StreamChunk }
 
+/** Sessions whose answered narrowing rung is remembered before the map is reset. */
+const RECOVERY_FLOOR_LIMIT = 64
+
 /** Chunk types that mean the model produced output, so the attempt is real. */
 const CONTENT_CHUNK_TYPES: ReadonlySet<string> = new Set([
   'block-start',
@@ -511,6 +514,13 @@ function withRefusalTrail(chunk: StreamChunk, trail: readonly string[]): StreamC
  * than registration.
  */
 export class KiroAdapter extends LlmAdapter {
+  /**
+   * The narrowest rung that was answered for a session, so the next turn of the
+   * same conversation starts where the last one succeeded instead of re-sending
+   * a request already known to be refused.
+   */
+  private readonly recoveryFloor = new Map<string, number>()
+
   constructor(private readonly config: KiroAdapterOptions) {
     super()
   }
@@ -774,11 +784,30 @@ export class KiroAdapter extends LlmAdapter {
       connection.refusalRecovery ?? 'narrow',
       connection.refusalRecoveryAttempts ?? DEFAULT_REFUSAL_RECOVERY_ATTEMPTS,
     )
+    // A refusal is a property of the request, and in a session the system prompt
+    // and the model are the same on every turn. Remembering the rung that was
+    // answered lets the next turn start there instead of paying the same
+    // refusals again — each refused attempt is billed to the account.
+    const sessionKey = options.sessionId ?? ''
+    const remembered = sessionKey.length === 0 ? undefined : this.recoveryFloor.get(sessionKey)
+    const first = remembered !== undefined && remembered > 0 && remembered <= ladder.length ? remembered : 0
     const trail: string[] = []
-    for (let index = 0; ; index += 1) {
+    for (let index = first; ; index += 1) {
       const step = index === 0 ? undefined : ladder[index - 1]
       const outcome = yield* attempt(step === undefined ? options : narrowRequest(options, step))
-      if (outcome.kind === 'streamed') return
+      if (outcome.kind === 'streamed') {
+        if (sessionKey.length > 0) {
+          if (index === 0) {
+            this.recoveryFloor.delete(sessionKey)
+          } else {
+            // Bounded so a long-lived process cannot accumulate one entry per
+            // session it has ever served.
+            if (this.recoveryFloor.size >= RECOVERY_FLOOR_LIMIT) this.recoveryFloor.clear()
+            this.recoveryFloor.set(sessionKey, index)
+          }
+        }
+        return
+      }
       // The service refuses the exact bytes it was sent, so the same request is
       // never re-asked: either a smaller one goes out, or the refusal is final.
       if (index >= ladder.length) {

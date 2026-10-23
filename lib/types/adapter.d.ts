@@ -181,6 +181,12 @@ export declare function conversationIdFor(sessionId?: string): string;
  */
 export declare class KiroAdapter extends LlmAdapter {
     private readonly config;
+    /**
+     * The narrowest rung that was answered for a session, so the next turn of the
+     * same conversation starts where the last one succeeded instead of re-sending
+     * a request already known to be refused.
+     */
+    private readonly recoveryFloor;
     constructor(config: KiroAdapterOptions);
     providerInfo(provider: string): LlmProviderInfo;
     providerRetryPolicy(_provider: string): ResolvedRetryPolicy;

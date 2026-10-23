@@ -16,15 +16,22 @@ import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 /**
  * One rung of the narrowing ladder.
  *
- * History and system text are the two halves a client can drop without lying
- * about the conversation: the messages are real turns the model has already
- * seen, and the system prompt is the caller's own instruction text. Tool
- * definitions are never dropped — a turn that cannot call tools is not the
+ * The two halves a client can drop without inventing anything are the system
+ * text and the conversation. They are not equally expensive to lose: dropping
+ * history ends the conversation the user is having — the model answers the last
+ * message with no idea what it is about — while dropping system text only ends
+ * the operator's standing instructions. So every rung sheds the system prompt
+ * first and the conversation last, and the last rung still keeps recent turns.
+ *
+ * Tool definitions are never dropped: a turn that cannot call tools is not the
  * turn the harness asked for.
  */
 export interface NarrowingStep {
-  /** Messages kept from the tail of the conversation, the current turn included. */
-  keepHistory: number
+  /**
+   * Messages kept from the tail of the conversation, the current turn included.
+   * Absent keeps the whole conversation, which is what the first rungs want.
+   */
+  keepHistory?: number
   /**
    * Head budget in characters for the system prompt. `undefined` keeps it
    * whole; `0` drops it entirely.
@@ -35,25 +42,28 @@ export interface NarrowingStep {
 }
 
 /**
- * The ladder, cheapest first.
+ * The ladder, cheapest to lose first.
  *
- * Each rung is a strictly smaller request than the one before, so a rung can
- * only ever succeed where its predecessor was refused. The first rung leaves
- * the system prompt alone because a long conversation is the more common
- * trigger; the last one drops it because a refusal that survives every history
- * trim is a refusal of the instruction text itself.
+ * A refusal is almost always the instruction text, so the first rung keeps the
+ * conversation intact and only clips the system prompt — if it answers, the
+ * user's thread is untouched. History is reduced only after both system-prompt
+ * rungs have failed, and never below the last six messages, because a reply
+ * that has forgotten the conversation is not a recovery from the user's point
+ * of view.
  */
 export const NARROWING_LADDER: readonly NarrowingStep[] = [
-  { keepHistory: 6, label: 'retried with the last 6 messages' },
   {
-    keepHistory: 2,
     systemBudget: 8_000,
-    label: 'retried with the last 2 messages and the system prompt trimmed to 8000 characters',
+    label: 'kept the conversation and trimmed the system prompt to 8000 characters',
   },
   {
-    keepHistory: 1,
     systemBudget: 0,
-    label: 'retried with the current turn only and no system prompt',
+    label: 'kept the conversation and dropped the system prompt',
+  },
+  {
+    keepHistory: 6,
+    systemBudget: 0,
+    label: 'kept the last 6 messages and dropped the system prompt',
   },
 ]
 
@@ -92,8 +102,9 @@ export function clipSystem(text: string | undefined, budget: number): string {
  * @returns the narrowed request.
  */
 export function narrowRequest(options: GenerateOptions, step: NarrowingStep): GenerateOptions {
-  const keep = Math.max(1, Math.trunc(step.keepHistory))
-  const messages = options.messages.slice(-keep)
+  const messages = step.keepHistory === undefined
+    ? options.messages
+    : options.messages.slice(-Math.max(1, Math.trunc(step.keepHistory)))
   const system = step.systemBudget === undefined
     ? options.system
     : clipSystem(options.system, step.systemBudget)
