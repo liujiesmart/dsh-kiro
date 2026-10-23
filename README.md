@@ -8,9 +8,11 @@ English | [中文](README.zh.md)
 
 Kiro provider for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with multi-method Kiro login, automatic token/profile refresh, live account model discovery, Claude/open-weight streaming, tool calls, and reasoning effort controls.
 
-The bundle registers the `kiro` provider route and mounts itself when installed. No API key or manual `cordis.yml` entry is required.
+The bundle registers the `dsh-kiro` provider route and mounts itself when installed. No API key or manual `cordis.yml` entry is required.
 
 This is an independent integration and is not affiliated with or endorsed by AWS or Kiro. Kiro and its logo are Amazon trademarks; see [NOTICE.md](NOTICE.md).
+
+> **Fork notice.** This repository is a fork of [dat-lequoc/dsh-kiro](https://github.com/dat-lequoc/dsh-kiro), itself derived from [caopu16/dsh-llm-kiro](https://github.com/caopu16/dsh-llm-kiro). Both are MIT-licensed, and both original copyright lines are kept unchanged in [LICENSE](LICENSE). Downstream work is additive — route naming, multi-account support, live model discovery, model-selection persistence, and silent-refusal recovery. [NOTICE.md](NOTICE.md) records the provenance, the trade-mark position, and the fact that this plugin speaks to Kiro's service under the operator's own agreement with Kiro rather than under any right this project can grant.
 
 ## Install
 

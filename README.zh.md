@@ -8,9 +8,11 @@
 
 面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Kiro provider，支持多种 Kiro 登录、token/profile 自动刷新、实时发现账号模型、Claude/开放权重模型流式调用、工具调用与 reasoning effort。
 
-插件安装后会自动注册 `kiro` provider 并挂载 bundle，不需要 API key，也不需要手工添加 `cordis.yml` 条目。
+插件安装后会自动注册 `dsh-kiro` provider 并挂载 bundle，不需要 API key，也不需要手工添加 `cordis.yml` 条目。
 
 这是一个独立集成项目，与 AWS 或 Kiro 没有关联，也未获其赞助或认可。Kiro 及其徽标是 Amazon 的商标；详见 [NOTICE.md](NOTICE.md)。
+
+> **Fork 说明。** 本仓库是 [dat-lequoc/dsh-kiro](https://github.com/dat-lequoc/dsh-kiro) 的 fork，而后者又源自 [caopu16/dsh-llm-kiro](https://github.com/caopu16/dsh-llm-kiro)。两者均为 MIT 许可，[LICENSE](LICENSE) 中两行原始版权声明保持原样未改。下游改动是增量式的——路由命名、多账号、实时模型发现、模型选择持久化以及静默拒答恢复。[NOTICE.md](NOTICE.md) 记录了来源、商标立场，以及本插件是在使用者与 Kiro 自己的协议下访问 Kiro 服务这一事实。
 
 ## 安装
 

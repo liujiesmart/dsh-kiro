@@ -8,21 +8,39 @@
     "name": "Dat LQ.",
     "url": "https://github.com/dat-lequoc"
   },
+  "contributors": [
+    {
+      "name": "Dat LQ.",
+      "url": "https://github.com/dat-lequoc"
+    },
+    {
+      "name": "caopu16",
+      "url": "https://github.com/caopu16"
+    }
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/liujiesmart/dsh-kiro.git"
   },
   "keywords": [
     "deepseek-harness",
+    "deepseek",
     "dsh",
     "dsh-plugin",
+    "dsh-kiro",
     "kiro",
     "kiro-cli",
     "kiro2api",
+    "kiro-provider",
+    "codewhisperer",
+    "aws-builder-id",
+    "iam-identity-center",
     "claude",
     "opus",
+    "sonnet",
     "oauth",
-    "reasoning"
+    "reasoning",
+    "llm-provider"
   ],
   "homepage": "https://github.com/liujiesmart/dsh-kiro#readme",
   "bugs": {
