@@ -226,11 +226,15 @@ Kiro 可能同时按账号权益与请求出口授权模型系列。未授权出
 
 ## 错误
 
-适配器会把上游失败映射为稳定的 DSH 错误码：`AUTH`、`FORBIDDEN`、`RATE_LIMIT`、`INVALID_MODEL`、`INVALID_REQUEST`、`SERVER`、`TRANSPORT`、`ABORTED`、`TIMEOUT`、`STREAM_CLOSED`、`MALFORMED_RESPONSE`、`EMPTY_RESPONSE`。
+适配器会把上游失败映射为稳定的 DSH 错误码：`AUTH`、`FORBIDDEN`、`RATE_LIMIT`、`INVALID_MODEL`、`INVALID_REQUEST`、`SERVER`、`TRANSPORT`、`ABORTED`、`TIMEOUT`、`STREAM_CLOSED`、`MALFORMED_RESPONSE`、`EMPTY_RESPONSE`、`MODEL_REFUSED`。
 
 套餐额度用尽会映射为 `QUOTA`：Kiro 可能以 HTTP 402 上报，有时也用 403 或原因为月度/每日额度的限流（`MONTHLY_REQUEST_COUNT`、`CREDIT_CONSUMPTION_RATE_EXCEEDED`）。重试无法解决，因此不能显示为速率限制或权限问题。
 
 当 Kiro 因内容超限拒绝请求时，会映射为 `CONTEXT_WINDOW_EXCEEDED`——依据其 `CONTENT_LENGTH_EXCEEDS_THRESHOLD` 校验原因以及官方客户端同样识别的 `Input is too long.` / `Prompt is too long.` 文案。只有这个错误码会触发 DSH 的紧急压缩并重试该轮；其他 HTTP 400 仍是 `INVALID_REQUEST`，因为压缩无法修复格式错误的请求。
+
+`MODEL_REFUSED` 是第三种情况，也是最容易被误读为「一发消息就退出」的一种：服务以 `HTTP 200` 接受并计费了请求，但整条流里只有 usage/计量帧，没有任何助手事件、也没有 `stopReason`。这正是模型侧对请求内容（通常是系统提示词）的静默拒答，同样的提示词必然得到同样的空结果。它被刻意排除在 DSH 默认可重试集合之外，因此不会用 5 次重试去复查同一个确定性结果；错误文案会带上本次请求占用的上下文百分比，便于定位。
+
+排查时按这个顺序做：同一模型换个朴素系统提示词仍被拒 → 是提示词内容（身份设定、越权框架、攻击手法清单之类）触发了服务端过滤；只有 Claude 系列被拒而 `deepseek-3.2`、`glm-5` 等开放权重模型正常 → 是模型系列的过滤强度差异，不是网络、鉴权或序列化问题。真正的空流（一个帧都没有）仍是可重试的 `EMPTY_RESPONSE`。
 
 ## 开发
 

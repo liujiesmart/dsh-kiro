@@ -150,7 +150,8 @@ describe('managed credentials', () => {
       region: 'eu-central-1',
     })
     const tokenFile = join(directory, 'kiro-auth-token.json')
-    expect((await stat(tokenFile)).mode & 0o777).toBe(0o600)
+    /* v8 ignore next 2 -- Windows reports 0o666 for every file it creates */
+    if (process.platform !== 'win32') expect((await stat(tokenFile)).mode & 0o777).toBe(0o600)
     await expect(resolveTokenFromDirectories([directory], {
       expiryBufferMs: 0,
       fetchJson: async () => { throw new Error('refresh should not run') },

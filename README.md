@@ -233,11 +233,15 @@ Kiro can authorize model families by request egress as well as account entitleme
 
 ## Errors
 
-The adapter maps provider failures to stable DSH codes: `AUTH`, `FORBIDDEN`, `RATE_LIMIT`, `INVALID_MODEL`, `INVALID_REQUEST`, `SERVER`, `TRANSPORT`, `ABORTED`, `TIMEOUT`, `STREAM_CLOSED`, `MALFORMED_RESPONSE`, and `EMPTY_RESPONSE`.
+The adapter maps provider failures to stable DSH codes: `AUTH`, `FORBIDDEN`, `RATE_LIMIT`, `INVALID_MODEL`, `INVALID_REQUEST`, `SERVER`, `TRANSPORT`, `ABORTED`, `TIMEOUT`, `STREAM_CLOSED`, `MALFORMED_RESPONSE`, `EMPTY_RESPONSE`, and `MODEL_REFUSED`.
 
 An exhausted plan is mapped to `QUOTA`: Kiro reports it as HTTP 402, and sometimes as a 403 or a throttle whose reason names the monthly or daily allowance (`MONTHLY_REQUEST_COUNT`, `CREDIT_CONSUMPTION_RATE_EXCEEDED`). Retrying cannot help, so it must not read as a rate limit or a permission problem.
 
 A request Kiro rejects for exceeding its content bound is mapped to `CONTEXT_WINDOW_EXCEEDED` — matched from its `CONTENT_LENGTH_EXCEEDS_THRESHOLD` validation reason and the `Input is too long.` / `Prompt is too long.` wording its own client recognizes. That specific code is what makes DSH run emergency compaction and retry the turn; every other HTTP 400 stays `INVALID_REQUEST`, because compacting cannot fix a malformed request.
+
+`MODEL_REFUSED` is the third case, and the one most easily misread as "the turn just quits". The service accepts and bills the request as HTTP 200, then streams usage and metering frames with no assistant event and no `stopReason` at all: a silent refusal of the request content, usually the system prompt, which the identical prompt reproduces identically. It is deliberately outside the DSH default retryable set, so five attempts are not spent re-asking a deterministic question; the message carries the context percentage the request consumed so the offending request stays identifiable.
+
+To localize it: a benign system prompt that still gets refused points at the prompt content (an operator persona, jailbreak framing, or a catalogue of attack techniques) rather than at the transport; and a refusal confined to the Claude models while `deepseek-3.2` or `glm-5` answer the same prompt points at per-family filtering, not at networking, credentials, or serialization. A stream with no frames at all is still the retryable `EMPTY_RESPONSE`.
 
 ## Development
 

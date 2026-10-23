@@ -13,12 +13,27 @@
  * Kiro supplies them, exact disjoint token counters. The finish reason follows
  * the provider's own terminal vocabulary; only a stream that ends without one
  * falls back to inference — `tool-calls` when the model opened any tool call,
- * `stop` otherwise, and `EMPTY_RESPONSE` for a stream with no content at all.
+ * `stop` otherwise, and an error for a stream with no content at all.
+ *
+ * Two distinct no-content failures exist and they must not share a code. A
+ * stream that billed the request through usage metadata, sent no assistant
+ * event, and named no stop reason is a refusal: the next attempt carries the
+ * same bytes and fails the same way. It is reported as `MODEL_REFUSED`, which
+ * stays outside the default retryable set, so a deterministic refusal does not
+ * spend five round trips on one prompt. Every other content-free stream keeps
+ * `EMPTY_RESPONSE`, whose contract is "repeatable attempt".
  *
  * @module dsh-kiro/translate
  */
 import type { FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm';
 import type { WireFrame, WireStopDetails } from './types.ts';
+/**
+ * Failure code for a request Kiro accepted, billed, and declined to answer:
+ * HTTP 200, usage metadata, and not one assistant event. Deliberately outside
+ * the harness default retryable set — the identical prompt produced the
+ * identical empty answer, so a retry only spends quota and time.
+ */
+export declare const MODEL_REFUSED_CODE = "MODEL_REFUSED";
 /**
  * Withhold a visible response that may turn out to be nothing but the legacy
  * continuation marker.

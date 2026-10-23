@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EMPTY_RESPONSE_CODE } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { decodeFrames } from '../src/eventstream.ts'
-import { TextRouter, translate } from '../src/translate.ts'
+import { TextRouter, MODEL_REFUSED_CODE, translate } from '../src/translate.ts'
 import type { WireFrame } from '../src/types.ts'
 import { chunked, frame, join, metadataFrame, textFrame, toolFrame } from './frames.ts'
 
@@ -214,11 +214,24 @@ describe('translate', () => {
     }])
   })
 
-  it('reports a content-free stream as an empty response', async () => {
+  it('reports a billed but content-free stream as a refusal', async () => {
     const chunks = await run(join(
       event('contextUsageEvent', '{"contextUsagePercentage":2.5}'),
       event('meteringEvent', '{"unit":"credit","unitPlural":"credits","usage":0.02}'),
     ))
+    const reason = chunks.at(-1)
+    expect(reason?.type === 'finish' ? reason.reason : undefined).toMatchObject({
+      kind: 'error',
+      failure: { code: MODEL_REFUSED_CODE },
+    })
+    const message = reason?.type === 'finish' && reason.reason.kind === 'error'
+      ? reason.reason.failure.message
+      : ''
+    expect(message).toContain('2.50% of the context window')
+  })
+
+  it('reports a stream with no frames at all as a repeatable empty response', async () => {
+    const chunks = await run(new Uint8Array(0))
     expect(chunks).toEqual([{
       type: 'finish',
       reason: {

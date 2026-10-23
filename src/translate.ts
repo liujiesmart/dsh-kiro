@@ -13,7 +13,15 @@
  * Kiro supplies them, exact disjoint token counters. The finish reason follows
  * the provider's own terminal vocabulary; only a stream that ends without one
  * falls back to inference — `tool-calls` when the model opened any tool call,
- * `stop` otherwise, and `EMPTY_RESPONSE` for a stream with no content at all.
+ * `stop` otherwise, and an error for a stream with no content at all.
+ *
+ * Two distinct no-content failures exist and they must not share a code. A
+ * stream that billed the request through usage metadata, sent no assistant
+ * event, and named no stop reason is a refusal: the next attempt carries the
+ * same bytes and fails the same way. It is reported as `MODEL_REFUSED`, which
+ * stays outside the default retryable set, so a deterministic refusal does not
+ * spend five round trips on one prompt. Every other content-free stream keeps
+ * `EMPTY_RESPONSE`, whose contract is "repeatable attempt".
  *
  * @module dsh-kiro/translate
  */
@@ -49,6 +57,13 @@ const DSML_MARKER = '<\uFF5CDSML\uFF5C'
  * turns cannot surface as visible assistant output.
  */
 const LEGACY_CONTINUATION = '[system: conversation continues]'
+/**
+ * Failure code for a request Kiro accepted, billed, and declined to answer:
+ * HTTP 200, usage metadata, and not one assistant event. Deliberately outside
+ * the harness default retryable set — the identical prompt produced the
+ * identical empty answer, so a retry only spends quota and time.
+ */
+export const MODEL_REFUSED_CODE = 'MODEL_REFUSED'
 
 /**
  * Withhold a visible response that may turn out to be nothing but the legacy
@@ -433,6 +448,43 @@ export async function* translate(
   let stopDetails: WireStopDetails | undefined
   let contextPercentage: number | undefined
   let outputCharacters = 0
+  let sawFrame = false
+  let sawAssistantEvent = false
+
+  /**
+   * Classify a stream that produced no content block at all.
+   *
+   * A refusal is the one shape the service makes distinguishable: it billed the
+   * request (usage or metering frames arrived) and sent no assistant event and
+   * no stop reason at all, so the identical prompt fails identically on every
+   * attempt. Everything else stays `EMPTY_RESPONSE`, whose contract is a
+   * repeatable attempt: a stream with no frames, a provider that named a stop
+   * and produced nothing, or content that the marker guard suppressed.
+   * @param stopNamed - the service itself reported a terminal stop reason.
+   * @returns the terminal error finish reason.
+   */
+  function emptyContentReason(stopNamed: boolean): FinishReason {
+    if (sawAssistantEvent || stopNamed || !sawFrame) {
+      return {
+        kind: 'error',
+        failure: {
+          message: 'Kiro returned a completed response with no content',
+          code: EMPTY_RESPONSE_CODE,
+        },
+      }
+    }
+    const priced = contextPercentage === undefined
+      ? ''
+      : ` after the request billed ${contextPercentage.toFixed(2)}% of the context window`
+    return {
+      kind: 'error',
+      failure: {
+        message: 'Kiro refused the request: it answered with usage metadata and no assistant content'
+          + `${priced}; the same prompt fails the same way, so narrow the request (system prompt or message)`,
+        code: MODEL_REFUSED_CODE,
+      },
+    }
+  }
 
   function open(kind: OpenBlock['kind']): OpenBlock {
     const block: OpenBlock = { index: nextIndex++, kind, text: '' }
@@ -472,6 +524,7 @@ export async function* translate(
   }
 
   for await (const frame of frames) {
+    sawFrame = true
     const exception = frame.headers[':exception-type']
     if (exception !== undefined) {
       const detail = new TextDecoder().decode(frame.payload)
@@ -479,6 +532,7 @@ export async function* translate(
     }
     switch (frame.headers[':event-type']) {
       case 'assistantResponseEvent': {
+        sawAssistantEvent = true
         const event = parsePayload<WireAssistantResponseEvent>(frame)
         // Guarded like Kiro's own parser: a frame without string content is
         // skipped rather than allowed to fail the stream on a property access.
@@ -488,6 +542,7 @@ export async function* translate(
         break
       }
       case 'reasoningContentEvent': {
+        sawAssistantEvent = true
         const event = parsePayload<WireReasoningContentEvent>(frame)
         // Native reasoning arrives out of band, so it bypasses the in-band
         // marker scanner entirely. `signature` and `redactedContent` have no DSH
@@ -498,6 +553,7 @@ export async function* translate(
         break
       }
       case 'toolUseEvent': {
+        sawAssistantEvent = true
         const event = parsePayload<WireToolUseEvent>(frame)
         let block = toolBlocks.get(event.toolUseId)
         if (block === undefined) {
@@ -563,24 +619,12 @@ export async function* translate(
     ? { kind: 'tool-calls' }
     : order.length > 0
       ? { kind: 'stop' }
-      : {
-        kind: 'error',
-        failure: {
-          message: 'Kiro returned a completed response with no content',
-          code: EMPTY_RESPONSE_CODE,
-        },
-      })
+      : emptyContentReason(false))
   // A provider that named a normal stop but produced nothing is still an empty
   // response: the loop needs something to act on, and the attempt is repeatable.
   const settled: FinishReason = order.length === 0
     && (reason.kind === 'stop' || reason.kind === 'tool-calls')
-    ? {
-      kind: 'error',
-      failure: {
-        message: 'Kiro returned a completed response with no content',
-        code: EMPTY_RESPONSE_CODE,
-      },
-    }
+    ? emptyContentReason(true)
     : reason
   const priced = usage
     ?? contextUsageTokens(contextPercentage, contextWindow, outputCharacters)

@@ -211,6 +211,28 @@ function assertPrivateDirectory(stat: { isDirectory: () => boolean; uid: number;
   if ((stat.mode & 0o022) !== 0) fail('Kiro ' + what + ' is writable beyond its owner', 'UNSAFE_ACCOUNT_STORE')
 }
 
+/**
+ * Flush a directory entry so a completed rename survives a power loss.
+ *
+ * Durability, not correctness: the document is already on disk. Windows cannot
+ * express the call at all — `fsync` on a directory handle fails with `EPERM`,
+ * and older filesystems report `EINVAL` — so a platform that has no way to
+ * perform it must not turn every account save into a failure.
+ * @param path - the directory holding the freshly renamed document.
+ */
+async function syncDirectory(path: string): Promise<void> {
+  if (process.platform === 'win32') return
+  const directory = await open(path, constants.O_RDONLY)
+  try {
+    await directory.sync()
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EINVAL' && code !== 'EPERM' && code !== 'EACCES') throw error
+  } finally {
+    await directory.close()
+  }
+}
+
 /** Read one bounded, owner-only file, or null when it is absent. */
 async function readPrivateFile(path: string, what: string, limit: number): Promise<string | null> {
   let handle
@@ -570,12 +592,7 @@ export class KiroAccountStore {
       await handle.close()
       handle = undefined
       await rename(temporary, this.documentPath)
-      const directory = await open(this.directory, constants.O_RDONLY)
-      try {
-        await directory.sync()
-      } finally {
-        await directory.close()
-      }
+      await syncDirectory(this.directory)
     } finally {
       await handle?.close()
       await unlink(temporary).catch(() => undefined)

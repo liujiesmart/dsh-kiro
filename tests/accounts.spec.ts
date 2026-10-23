@@ -228,6 +228,9 @@ describe('KiroAccountStore', () => {
   })
 
   it('refuses an account document another user could read', async () => {
+    // POSIX file modes: Windows cannot express 0o644, so the store cannot see
+    // the exposure this case is about.
+    if (process.platform === 'win32') return
     const path = await directory()
     const store = new KiroAccountStore(path)
     await store.upsert({ credential: credential('a', 'r') })
@@ -241,6 +244,8 @@ describe('KiroAccountStore', () => {
     const path = await directory()
     const store = new KiroAccountStore(path)
     await store.upsert({ credential: credential('a', 'r') })
+    /* v8 ignore next 2 -- Windows reports 0o666 for every file it creates */
+    if (process.platform === 'win32') return
     expect((await stat(store.documentPath)).mode & 0o777).toBe(0o600)
   })
 })
