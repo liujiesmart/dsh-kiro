@@ -49,6 +49,7 @@ Built `lib/` artifacts are committed, so a GitHub install does not need to execu
 - Stream text, reasoning, and tool calls from Kiro's Amazon EventStream protocol.
 - Send images to every model whose catalog entry accepts them, which unlocks image attachments and the harness's own image-reading tool.
 - Support direct egress or an authenticated HTTP/HTTPS `CONNECT` proxy.
+- Recover from Kiro's silent refusal with a bounded narrowing ladder instead of ending the turn on the first attempt.
 - Hot-reload `llm-kiro` settings without restarting DSH.
 
 ## Sign in
@@ -164,6 +165,8 @@ Every field is optional:
 | `streamIdleTimeoutMs` | `300000` | Maximum idle time while a provider read is outstanding. |
 | `tokenExpiryBufferMs` | `300000` | Refresh an access token this long before expiration. |
 | `retryPolicy` | bounded normal | Provider retry policy executed by `dsh-llm-retry`. |
+| `refusalRecovery` | `narrow` | `narrow` retries a silent refusal with a progressively smaller request; `off` reports the first refusal unchanged. |
+| `refusalRecoveryAttempts` | `3` | How many narrowing retries a refusal may spend (`0`–`3`). |
 
 To pin values to one profile instead, patch the bundle row by id in `$DSH_HOME/profiles/<name>/cordis.patch.yml`:
 
@@ -188,6 +191,25 @@ The single exception is deliberate and narrow: a text block whose entire content
 Responses arrive as `vnd.amazon.eventstream` frames. The adapter validates frame boundaries and CRCs, routes native `reasoningContentEvent` frames and legacy `<thinking>` runs into DSH reasoning blocks, preserves text blocks, decodes tool calls, and suppresses known open-weight prompt-format artifacts.
 
 The terminal `metadataEvent` supplies the finish reason: `END_TURN`, `TOOL_USE`, `MAX_TOKENS`, `MODEL_CONTEXT_WINDOW_EXCEEDED`, `CONTENT_FILTERED`, and `PAUSE_TURN` map to the matching DSH outcome, and an unrecognized reason fails the turn with a diagnosable code instead of reporting success.
+
+### Refusal recovery
+
+A silent refusal — HTTP 200, usage and metering frames, no assistant event and no `stopReason` — is deterministic for the exact bytes that were sent, so re-sending the same request cannot help. What can help is sending a strictly smaller one, which is what `refusalRecovery: narrow` does. Each rung is smaller than the last, and the ladder stops as soon as a rung produces content:
+
+| Rung | Request |
+|---|---|
+| original | the harness request, unchanged |
+| 1 | the last 6 messages, system prompt intact |
+| 2 | the last 2 messages, system prompt clipped to 8,000 characters at a paragraph boundary |
+| 3 | the current turn only, no system prompt |
+
+Three properties make the retry safe to run by default:
+
+- **Frames are held, not forwarded.** Everything before the first content block is buffered, so an attempt that is about to be replaced never leaves a stray `usage` chunk in the stream the harness is watching. A refused attempt costs the account its billed credits but leaves no trace on the consumer side.
+- **Only refusals are retried.** Any attempt that produced a text, reasoning, or tool-call chunk is final and streams straight through; so is every other terminal code. The ladder is bounded by `refusalRecoveryAttempts` because each refused attempt is billed.
+- **The failure names what was spent.** If every rung is refused, the terminal `MODEL_REFUSED` message keeps the billed context percentage and appends `recovery attempted: …` with one entry per rung, and each retry logs the rung it chose.
+
+Set `refusalRecovery: off` to see the raw first refusal, which is the honest signal when the goal is to diagnose which content is being filtered rather than to get the turn answered.
 
 ### Generation controls
 
@@ -239,9 +261,9 @@ An exhausted plan is mapped to `QUOTA`: Kiro reports it as HTTP 402, and sometim
 
 A request Kiro rejects for exceeding its content bound is mapped to `CONTEXT_WINDOW_EXCEEDED` — matched from its `CONTENT_LENGTH_EXCEEDS_THRESHOLD` validation reason and the `Input is too long.` / `Prompt is too long.` wording its own client recognizes. That specific code is what makes DSH run emergency compaction and retry the turn; every other HTTP 400 stays `INVALID_REQUEST`, because compacting cannot fix a malformed request.
 
-`MODEL_REFUSED` is the third case, and the one most easily misread as "the turn just quits". The service accepts and bills the request as HTTP 200, then streams usage and metering frames with no assistant event and no `stopReason` at all: a silent refusal of the request content, usually the system prompt, which the identical prompt reproduces identically. It is deliberately outside the DSH default retryable set, so five attempts are not spent re-asking a deterministic question; the message carries the context percentage the request consumed so the offending request stays identifiable.
+`MODEL_REFUSED` is the third case, and the one most easily misread as "the turn just quits". The service accepts and bills the request as HTTP 200, then streams usage and metering frames with no assistant event and no `stopReason` at all: a silent refusal of the request content, usually the system prompt, which the identical prompt reproduces identically. It is deliberately outside the DSH default retryable set, so harness attempts are not spent re-asking a deterministic question; instead the adapter runs its own bounded narrowing ladder ([Refusal recovery](#refusal-recovery)), which asks progressively smaller questions until one is answered. The message carries the context percentage the request consumed so the offending request stays identifiable, plus the narrowing already spent.
 
-To localize it: a benign system prompt that still gets refused points at the prompt content (an operator persona, jailbreak framing, or a catalogue of attack techniques) rather than at the transport; and a refusal confined to the Claude models while `deepseek-3.2` or `glm-5` answer the same prompt points at per-family filtering, not at networking, credentials, or serialization. A stream with no frames at all is still the retryable `EMPTY_RESPONSE`.
+To localize a refusal that survives the whole ladder: a benign system prompt that still gets refused points at the prompt content (an operator persona, jailbreak framing, or a catalogue of attack techniques) rather than at the transport; and a refusal confined to the Claude models while `deepseek-3.2` or `glm-5` answer the same prompt points at per-family filtering, not at networking, credentials, or serialization. A stream with no frames at all is still the retryable `EMPTY_RESPONSE`.
 
 ## Development
 

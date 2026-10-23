@@ -35,6 +35,7 @@ import { credentialDirectory } from './paths.ts'
 import { FileModelSettingsStore } from './model-settings.ts'
 import { assertKiroProfileArn } from './profile.ts'
 import { assertKiroRegion } from './region.ts'
+import { DEFAULT_REFUSAL_RECOVERY_ATTEMPTS, MAX_REFUSAL_RECOVERY_ATTEMPTS } from './refusal.ts'
 import { parseProxyUrl, postForm, postJson } from './transport.ts'
 import { registerWebApi } from './web.ts'
 import { KiroUsageService } from './usage.ts'
@@ -212,6 +213,14 @@ export interface Config {
   tokenExpiryBufferMs: Volatile<number>
   /** Provider-owned model-request retry policy; omission uses normal defaults. */
   retryPolicy: Volatile<RetryPolicyConfig | undefined>
+  /**
+   * Response to a request Kiro bills and answers with no content. `narrow`
+   * retries with a progressively smaller request, `off` reports the refusal on
+   * the first attempt.
+   */
+  refusalRecovery: Volatile<'off' | 'narrow' | undefined>
+  /** How many narrowing retries a refusal may spend (0–3, default 3). */
+  refusalRecoveryAttempts: Volatile<number | undefined>
 }
 
 /** Plain values accepted by the provider resolver. */
@@ -252,6 +261,12 @@ export const Config = z.object({
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS).volatile(),
   tokenExpiryBufferMs: z.number().min(0).max(MAX_TIMER_DELAY_MS).default(DEFAULT_TOKEN_EXPIRY_BUFFER_MS).volatile(),
   retryPolicy: RetryPolicySchema.volatile(),
+  refusalRecovery: z.union(['off', 'narrow']).default('narrow').volatile(),
+  refusalRecoveryAttempts: z.number().step(1)
+    .min(0)
+    .max(MAX_REFUSAL_RECOVERY_ATTEMPTS)
+    .default(DEFAULT_REFUSAL_RECOVERY_ATTEMPTS)
+    .volatile(),
 })
 
 /**
@@ -382,6 +397,14 @@ export function resolveAdapterOptions(config: Options): ResolvedKiroOptions {
       `llm-kiro: tokenExpiryBufferMs must be a non-negative finite number no greater than ${MAX_TIMER_DELAY_MS}`,
     )
   }
+  const refusalRecoveryAttempts = config.refusalRecoveryAttempts ?? DEFAULT_REFUSAL_RECOVERY_ATTEMPTS
+  if (!Number.isInteger(refusalRecoveryAttempts)
+    || refusalRecoveryAttempts < 0
+    || refusalRecoveryAttempts > MAX_REFUSAL_RECOVERY_ATTEMPTS) {
+    throw new Error(
+      `llm-kiro: refusalRecoveryAttempts must be an integer between 0 and ${MAX_REFUSAL_RECOVERY_ATTEMPTS}`,
+    )
+  }
   return {
     ...config.proxyUrl === undefined ? {} : { proxyUrl: config.proxyUrl },
     ...region === undefined ? {} : { region },
@@ -397,6 +420,8 @@ export function resolveAdapterOptions(config: Options): ResolvedKiroOptions {
     streamIdleTimeoutMs,
     tokenExpiryBufferMs,
     retryPolicy: resolveRetryPolicy(config.retryPolicy, 'llm-kiro: retryPolicy'),
+    refusalRecovery: config.refusalRecovery ?? 'narrow',
+    refusalRecoveryAttempts: config.refusalRecoveryAttempts ?? DEFAULT_REFUSAL_RECOVERY_ATTEMPTS,
   }
 }
 
@@ -470,6 +495,11 @@ export function apply(ctx: Context, config: Config): void {
     resolveAttachments: () => {
       const store = ctx.get('attachments') as AttachmentStore | undefined
       return typeof store?.readImageRequest === 'function' ? store : undefined
+    },
+    // A refusal is invisible on the wire — HTTP 200, no content — so the one
+    // place it can be explained is the log line for the retry it triggered.
+    onRefusalRecovery: trail => {
+      ctx.logger.warn(`dsh-kiro: Kiro refused the request; ${trail.at(-1) ?? 'retrying with a smaller request'}`)
     },
   })
   ctx.llm.registerConfigurableProviders([

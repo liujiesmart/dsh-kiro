@@ -75,6 +75,14 @@ export interface Config {
     tokenExpiryBufferMs: Volatile<number>;
     /** Provider-owned model-request retry policy; omission uses normal defaults. */
     retryPolicy: Volatile<RetryPolicyConfig | undefined>;
+    /**
+     * Response to a request Kiro bills and answers with no content. `narrow`
+     * retries with a progressively smaller request, `off` reports the refusal on
+     * the first attempt.
+     */
+    refusalRecovery: Volatile<'off' | 'narrow' | undefined>;
+    /** How many narrowing retries a refusal may spend (0–3, default 3). */
+    refusalRecoveryAttempts: Volatile<number | undefined>;
 }
 /** Plain values accepted by the provider resolver. */
 export type Options = {
@@ -93,6 +101,8 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     streamIdleTimeoutMs: z<number, number, "volatile-defined">;
     tokenExpiryBufferMs: z<number, number, "volatile-defined">;
     retryPolicy: z<NoInfer<RetryPolicyConfig>, NoInfer<RetryPolicyConfig>, "volatile">;
+    refusalRecovery: z<"off" | "narrow", "off" | "narrow", "volatile-defined">;
+    refusalRecoveryAttempts: z<number, number, "volatile-defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
     proxyUrl: z<string, string, "volatile">;
     region: z<string, string, "volatile">;
@@ -104,6 +114,8 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     streamIdleTimeoutMs: z<number, number, "volatile-defined">;
     tokenExpiryBufferMs: z<number, number, "volatile-defined">;
     retryPolicy: z<NoInfer<RetryPolicyConfig>, NoInfer<RetryPolicyConfig>, "volatile">;
+    refusalRecovery: z<"off" | "narrow", "off" | "narrow", "volatile-defined">;
+    refusalRecoveryAttempts: z<number, number, "volatile-defined">;
 }>>, "plain">;
 /**
  * One resolution's complete request facts. Connection, proxy, and token-policy

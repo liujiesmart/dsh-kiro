@@ -86,6 +86,14 @@ export interface KiroConnectionOptions {
     tokenExpiryBufferMs: number;
     /** Provider-owned model-request retry policy, already resolved. */
     retryPolicy: ResolvedRetryPolicy;
+    /**
+     * Response to a request the service bills and answers with no content.
+     * `narrow` retries with a progressively smaller request; `off` reports the
+     * refusal on the first attempt.
+     */
+    refusalRecovery?: 'off' | 'narrow';
+    /** Maximum narrowing retries after a refusal; bounded by the ladder length. */
+    refusalRecoveryAttempts?: number;
 }
 /** Constructor options: the operation-local resolution hooks the plugin owns. */
 export interface KiroAdapterOptions {
@@ -110,6 +118,12 @@ export interface KiroAdapterOptions {
      * one upstream.
      */
     resolveAttachments?: () => AttachmentStore | undefined;
+    /**
+     * Report a refusal the adapter is about to retry with a smaller request, so a
+     * deployment can see the narrowing in its own log instead of inferring it
+     * from a turn that answered after an unexplained pause.
+     */
+    onRefusalRecovery?: (trail: readonly string[]) => void;
 }
 /** The attachment-store surface this adapter uses: one call, by reference. */
 export interface AttachmentStore {

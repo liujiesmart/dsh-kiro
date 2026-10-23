@@ -35,11 +35,13 @@ import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentId, ImageAttachmentRef, ImageMediaType, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { decodeFrames } from './eventstream.ts'
+import { narrowLadder, narrowRequest } from './refusal.ts'
+import { DEFAULT_REFUSAL_RECOVERY_ATTEMPTS } from './refusal.ts'
 import { serializeRequest } from './serialize.ts'
 import type { WireImageBlock } from './types.ts'
 import type { RequestDefaults } from './serialize.ts'
 import { post } from './transport.ts'
-import { translate } from './translate.ts'
+import { MODEL_REFUSED_CODE, translate } from './translate.ts'
 import type { KiroToken } from './auth.ts'
 import { profileRegion } from './profile.ts'
 
@@ -176,6 +178,14 @@ export interface KiroConnectionOptions {
   tokenExpiryBufferMs: number
   /** Provider-owned model-request retry policy, already resolved. */
   retryPolicy: ResolvedRetryPolicy
+  /**
+   * Response to a request the service bills and answers with no content.
+   * `narrow` retries with a progressively smaller request; `off` reports the
+   * refusal on the first attempt.
+   */
+  refusalRecovery?: 'off' | 'narrow'
+  /** Maximum narrowing retries after a refusal; bounded by the ladder length. */
+  refusalRecoveryAttempts?: number
 }
 
 /** Constructor options: the operation-local resolution hooks the plugin owns. */
@@ -204,6 +214,12 @@ export interface KiroAdapterOptions {
    * one upstream.
    */
   resolveAttachments?: () => AttachmentStore | undefined
+  /**
+   * Report a refusal the adapter is about to retry with a smaller request, so a
+   * deployment can see the narrowing in its own log instead of inferring it
+   * from a turn that answered after an unexplained pause.
+   */
+  onRefusalRecovery?: (trail: readonly string[]) => void
 }
 
 /** The attachment-store surface this adapter uses: one call, by reference. */
@@ -434,6 +450,62 @@ export function conversationIdFor(sessionId?: string): string {
 }
 
 /**
+ * How one POST ended, as far as the consumer is concerned.
+ *
+ * `streamed` means the attempt was already forwarded. `refused` means the
+ * service billed the request and produced no content, and carries the frames
+ * that were held back so the consumer never observes an attempt the adapter is
+ * about to replace.
+ */
+type AttemptOutcome =
+  | { kind: 'streamed' }
+  | { kind: 'refused'; held: readonly StreamChunk[]; finish: StreamChunk }
+
+/** Chunk types that mean the model produced output, so the attempt is real. */
+const CONTENT_CHUNK_TYPES: ReadonlySet<string> = new Set([
+  'block-start',
+  'text-delta',
+  'reasoning-delta',
+  'tool-call-delta',
+])
+
+/** Whether a chunk belongs to the model's own output. */
+function isContentChunk(chunk: StreamChunk): boolean {
+  return CONTENT_CHUNK_TYPES.has(chunk.type)
+}
+
+/**
+ * Whether a chunk is the terminal silent refusal.
+ * @param chunk - one translated chunk.
+ * @returns true only for the `MODEL_REFUSED` finish.
+ */
+function isRefusalFinish(chunk: StreamChunk): boolean {
+  return chunk.type === 'finish'
+    && chunk.reason.kind === 'error'
+    && chunk.reason.failure.code === MODEL_REFUSED_CODE
+}
+
+/**
+ * Name what narrowing was already spent on the terminal refusal.
+ * @param chunk - the refusal finish.
+ * @param trail - one label per refused attempt.
+ * @returns the finish carrying the trail.
+ */
+function withRefusalTrail(chunk: StreamChunk, trail: readonly string[]): StreamChunk {
+  if (chunk.type !== 'finish' || chunk.reason.kind !== 'error') return chunk
+  return {
+    ...chunk,
+    reason: {
+      ...chunk.reason,
+      failure: {
+        ...chunk.reason.failure,
+        message: `${chunk.reason.failure.message}; recovery attempted: ${trail.join('; ')}`,
+      },
+    },
+  }
+}
+
+/**
  * The Kiro adapter. One instance serves the whole route: the harness model
  * name is the wire `modelId`, so adding a Kiro model is configuration rather
  * than registration.
@@ -594,66 +666,128 @@ export class KiroAdapter extends LlmAdapter {
         'UNSUPPORTED_CONTENT',
       )
     }
-    const images = requestHasImages
-      ? await prepareImages(options, this.config.resolveAttachments?.(), signal)
-      : undefined
-    const body = JSON.stringify(serializeRequest(
-      options,
-      connection.defaults,
-      conversationIdFor(options.sessionId),
-      profileArn,
-      nativeEffort,
-      selected?.maxTokensBounds === undefined
-        ? undefined
-        : { maxTokensBounds: selected.maxTokensBounds },
-      images,
-    ))
-    const response = await post({
-      url,
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/vnd.amazon.eventstream',
-        authorization: `Bearer ${token.accessToken}`,
-        ...url.includes('://codewhisperer.') ? { 'x-amz-target': CODEWHISPERER_TARGET } : {},
-        ...kiroTokenTypeHeaders(token),
-        'x-amzn-kiro-agent-mode': 'vibe',
-        // Kiro authorizes by client identity: a request whose `user-agent`
-        // does not name its IDE is refused with "Your subscription does not
-        // support this application", so this header is a protocol constant
-        // rather than attribution. Harness attribution therefore travels in
-        // `x-amz-user-agent`, which the service passes through.
-        'user-agent': KIRO_USER_AGENT,
-        'x-amz-user-agent': `${KIRO_USER_AGENT} ${userAgent()}`,
-      },
-      body,
-      signal,
-      ...connection.proxyUrl === undefined ? {} : { proxyUrl: connection.proxyUrl },
-    })
-
-    if (response.status !== 200) {
-      const chunks: Uint8Array[] = []
-      for await (const chunk of response.body) chunks.push(chunk)
-      const text = Buffer.concat(chunks).toString('utf8')
-      let message = `Kiro API error (HTTP ${response.status})`
-      try {
-        const parsed = JSON.parse(text) as { message?: string }
-        if (parsed.message !== undefined) message = parsed.message
-      } catch {
-        // Only swallow error-body parsing: the status still identifies the
-        // failure, so an HTML proxy error page must not mask it.
-      }
-      const id = response.headers['x-amzn-requestid']
-      throw new LlmError(message, httpErrorCode(response.status, text), {
-        status: response.status,
-        ...typeof id === 'string' && id.length > 0 ? { requestId: ProviderRequestId(id) } : {},
-      })
-    }
-
+    const conversationId = conversationIdFor(options.sessionId)
+    const attachments = this.config.resolveAttachments?.()
+    const limits = selected?.maxTokensBounds === undefined
+      ? undefined
+      : { maxTokensBounds: selected.maxTokensBounds }
     // The context capacity the percentage is a fraction of: the live catalog's
     // exact value when discovery supplied one, else the configured default.
-    yield* translate(
-      decodeFrames(response.body, onActivity),
-      selected?.contextWindow ?? connection.defaultContextWindow,
+    const contextWindow = selected?.contextWindow ?? connection.defaultContextWindow
+
+    /**
+     * Send one request and report how it ended.
+     *
+     * Every frame before the first content block is held rather than forwarded:
+     * a refusal that is about to be retried must not leave a `usage` chunk in a
+     * stream the consumer is still watching, and holding costs nothing because a
+     * refused attempt sends at most usage and metering frames.
+     */
+    const attempt = async function* (
+      candidate: GenerateOptions,
+    ): AsyncGenerator<StreamChunk, AttemptOutcome> {
+      const images = candidate.messages.some(message => contentHasImage(message.content))
+        ? await prepareImages(candidate, attachments, signal)
+        : undefined
+      const body = JSON.stringify(serializeRequest(
+        candidate,
+        connection.defaults,
+        conversationId,
+        profileArn,
+        nativeEffort,
+        limits,
+        images,
+      ))
+      const response = await post({
+        url,
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/vnd.amazon.eventstream',
+          authorization: `Bearer ${token.accessToken}`,
+          ...url.includes('://codewhisperer.') ? { 'x-amz-target': CODEWHISPERER_TARGET } : {},
+          ...kiroTokenTypeHeaders(token),
+          'x-amzn-kiro-agent-mode': 'vibe',
+          // Kiro authorizes by client identity: a request whose `user-agent`
+          // does not name its IDE is refused with "Your subscription does not
+          // support this application", so this header is a protocol constant
+          // rather than attribution. Harness attribution therefore travels in
+          // `x-amz-user-agent`, which the service passes through.
+          'user-agent': KIRO_USER_AGENT,
+          'x-amz-user-agent': `${KIRO_USER_AGENT} ${userAgent()}`,
+        },
+        body,
+        signal,
+        ...connection.proxyUrl === undefined ? {} : { proxyUrl: connection.proxyUrl },
+      })
+
+      if (response.status !== 200) {
+        const chunks: Uint8Array[] = []
+        for await (const chunk of response.body) chunks.push(chunk)
+        const text = Buffer.concat(chunks).toString('utf8')
+        let message = `Kiro API error (HTTP ${response.status})`
+        try {
+          const parsed = JSON.parse(text) as { message?: string }
+          if (parsed.message !== undefined) message = parsed.message
+        } catch {
+          // Only swallow error-body parsing: the status still identifies the
+          // failure, so an HTML proxy error page must not mask it.
+        }
+        const id = response.headers['x-amzn-requestid']
+        throw new LlmError(message, httpErrorCode(response.status, text), {
+          status: response.status,
+          ...typeof id === 'string' && id.length > 0 ? { requestId: ProviderRequestId(id) } : {},
+        })
+      }
+
+      const iterator = translate(
+        decodeFrames(response.body, onActivity),
+        contextWindow,
+      )[Symbol.asyncIterator]()
+      const held: StreamChunk[] = []
+      let decided = false
+      try {
+        for (;;) {
+          const next = await iterator.next()
+          if (next.done === true) {
+            for (const chunk of held) yield chunk
+            return { kind: 'streamed' }
+          }
+          const chunk = next.value
+          if (!decided && isRefusalFinish(chunk)) {
+            return { kind: 'refused', held, finish: chunk }
+          }
+          if (!decided && !isContentChunk(chunk)) {
+            held.push(chunk)
+            continue
+          }
+          decided = true
+          for (const pending of held) yield pending
+          held.length = 0
+          yield chunk
+        }
+      } finally {
+        await iterator.return?.(undefined)
+      }
+    }
+
+    const ladder = narrowLadder(
+      connection.refusalRecovery ?? 'narrow',
+      connection.refusalRecoveryAttempts ?? DEFAULT_REFUSAL_RECOVERY_ATTEMPTS,
     )
+    const trail: string[] = []
+    for (let index = 0; ; index += 1) {
+      const step = index === 0 ? undefined : ladder[index - 1]
+      const outcome = yield* attempt(step === undefined ? options : narrowRequest(options, step))
+      if (outcome.kind === 'streamed') return
+      // The service refuses the exact bytes it was sent, so the same request is
+      // never re-asked: either a smaller one goes out, or the refusal is final.
+      if (index >= ladder.length) {
+        for (const held of outcome.held) yield held
+        yield trail.length === 0 ? outcome.finish : withRefusalTrail(outcome.finish, trail)
+        return
+      }
+      trail.push(ladder[index]?.label ?? '')
+      this.config.onRefusalRecovery?.([...trail])
+    }
   }
 }
